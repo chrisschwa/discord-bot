@@ -1,0 +1,366 @@
+"""
+Music cog - Music playback commands for Discord voice channels.
+"""
+import logging
+import asyncio
+import discord
+from discord import (
+    app_commands, Embed, Colour, Interaction, Member, VoiceChannel
+)
+from discord.ext import commands
+
+from bot.music.player import MusicPlayer, MusicManager, Track, LoopMode
+
+logger = logging.getLogger("bot.cogs.music")
+
+
+class Music(commands.Cog):
+    """Music playback commands."""
+
+    def __init__(self, bot):
+        self.bot = bot
+        self.music_manager = MusicManager()
+
+    def cog_unload(self):
+        """Cleanup when cog is unloaded."""
+        asyncio.create_task(self.music_manager.cleanup())
+
+    def _check_voice_channel(self, interaction: Interaction) -> tuple:
+        """Check if user is in a voice channel and bot has permissions."""
+        member = interaction.user
+        if not isinstance(member, Member):
+            return None, "You must be in a Discord server to use this command."
+        
+        voice_state = member.voice
+        if not voice_state or not voice_state.channel:
+            return None, "You need to be in a voice channel first!"
+        
+        channel = voice_state.channel
+        bot_permissions = channel.permissions_for(interaction.guild.me)
+        if not bot_permissions.connect:
+            return None, "I don't have permission to connect to your voice channel."
+        if not bot_permissions.speak:
+            return None, "I don't have permission to speak in your voice channel."
+        
+        return channel, None
+
+    async def _get_music_channel(self, guild_id: int):
+        """Get the configured music channel, or None."""
+        settings = await self.bot.db.get_server_settings(guild_id)
+        if settings and settings.get("music_channel_id"):
+            channel = self.bot.get_channel(settings["music_channel_id"])
+            if channel:
+                return channel
+        return None
+
+    async def _send_to_channel(self, guild_id: int, interaction, content=None, embed=None):
+        """Send message to music channel if configured, otherwise as followup."""
+        music_channel = await self._get_music_channel(guild_id)
+        if music_channel:
+            try:
+                await music_channel.send(content=content, embed=embed)
+            except Exception:
+                await interaction.followup.send(content=content, embed=embed)
+        else:
+            await interaction.followup.send(content=content, embed=embed)
+
+    async def _fetch_track_info(self, url: str) -> Track:
+        """Fetch track info from URL using yt-dlp."""
+        import yt_dlp
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "default_search": "auto",
+            "extract_flat": False,
+            "socket_timeout": 30,
+            "format": "bestaudio/best",
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            if info.get("_type") == "playlist":
+                entries = info.get("entries", [])
+                if entries:
+                    first = entries[0]
+                    title = first.get("title", "Unknown Playlist")
+                    duration = first.get("duration", 0) or 0
+                    url = first.get("url") or first.get("webpage_url", url)
+                else:
+                    title = info.get("title", "Unknown Playlist")
+                    duration = 0
+            else:
+                title = info.get("title", "Unknown Track")
+                duration = info.get("duration", 0) or 0
+                url = info.get("url") or info.get("webpage_url", url)
+
+            thumbnail = info.get("thumbnail", "")
+            source = "youtube"
+            if "spotify" in url:
+                source = "spotify"
+            elif "soundcloud" in url:
+                source = "soundcloud"
+
+            return Track(
+                title=title,
+                url=url,
+                duration=int(duration),
+                requester_id=0,
+                thumbnail=thumbnail,
+                source=source,
+            )
+
+    @app_commands.command(name="music-play", description="Play a song from YouTube/Spotify URL")
+    @app_commands.describe(url="YouTube or Spotify URL to play")
+    async def music_play(self, interaction: Interaction, url: str):
+        channel, error = self._check_voice_channel(interaction)
+        if error:
+            await interaction.response.send_message(f"❌ {error}")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        await interaction.response.defer()
+
+        if not player.voice_client or not player.voice_client.is_connected():
+            joined = await player.join_voice_channel(interaction.guild, channel)
+            if not joined:
+                await interaction.followup.send("❌ Failed to join voice channel.")
+                return
+
+        try:
+            track = await self._fetch_track_info(url)
+            track.requester_id = interaction.user.id
+            await player.add_to_queue(track)
+
+            if not player.current and not player._task:
+                asyncio.create_task(player.play_next(interaction.guild))
+
+            embed = Embed(
+                title="🎵 Added to Queue",
+                description=f"**{track.title}**",
+                color=Colour.green(),
+            )
+            if track.thumbnail:
+                embed.set_thumbnail(url=track.thumbnail)
+            embed.add_field(name="Duration", value=player._format_duration(track.duration), inline=True)
+            embed.add_field(name="Position", value=f"#{player.queue_length}", inline=True)
+            embed.add_field(name="Requested by", value=interaction.user.mention, inline=True)
+            if player.current:
+                embed.set_footer(text=f"Currently playing: {player.current.title}")
+
+            await self._send_to_channel(interaction.guild.id, interaction, embed=embed)
+            logger.info(f"Added to queue: {track.title} by {interaction.user}")
+
+        except Exception as e:
+            logger.error(f"Failed to fetch track info for '{url}': {e}", exc_info=True)
+            await interaction.followup.send(f"❌ Failed to fetch track: {e}")
+
+    @app_commands.command(name="music-channel", description="Set the music response channel (Admin only)")
+    @app_commands.describe(channel="Channel to send music responses to (defaults to current)")
+    async def music_channel(self, interaction: Interaction, channel: discord.TextChannel = None):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ You need Administrator permission.")
+            return
+
+        text_channel = channel or interaction.channel
+        if not text_channel:
+            await interaction.response.send_message("❌ You must use this command in a text channel.")
+            return
+
+        await self.bot.db.set_server_settings(
+            interaction.guild.id,
+            music_channel_id=text_channel.id
+        )
+        await interaction.response.send_message(f"🎵 Music responses will now be sent to {text_channel.mention}")
+
+    @app_commands.command(name="music-channel-clear", description="Clear the fixed music channel (Admin only)")
+    async def music_channel_clear(self, interaction: Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ You need Administrator permission.")
+            return
+
+        await self.bot.db.set_server_settings(
+            interaction.guild.id,
+            music_channel_id=None
+        )
+        await interaction.response.send_message("🎵 Music channel cleared. Responses will go to the command channel.")
+
+    @app_commands.command(name="music-skip", description="Skip the current track")
+    async def music_skip(self, interaction: Interaction):
+        channel, error = self._check_voice_channel(interaction)
+        if error:
+            await interaction.response.send_message(f"❌ {error}")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        if not player.current:
+            await interaction.response.send_message("❌ Nothing is currently playing.")
+            return
+
+        skipped = player.current.title
+        await player.skip()
+        await self._send_to_channel(interaction.guild.id, interaction, content=f"⏭ Skipped **{skipped}**")
+
+    @app_commands.command(name="music-pause", description="Pause the current track")
+    async def music_pause(self, interaction: Interaction):
+        channel, error = self._check_voice_channel(interaction)
+        if error:
+            await interaction.response.send_message(f"❌ {error}")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        if not player.current:
+            await interaction.response.send_message("❌ Nothing is currently playing.")
+            return
+
+        if await player.pause():
+            await self._send_to_channel(interaction.guild.id, interaction, content="⏸ Paused playback")
+        else:
+            await self._send_to_channel(interaction.guild.id, interaction, content="❌ Playback is already paused or stopped.")
+
+    @app_commands.command(name="music-resume", description="Resume paused playback")
+    async def music_resume(self, interaction: Interaction):
+        channel, error = self._check_voice_channel(interaction)
+        if error:
+            await interaction.response.send_message(f"❌ {error}")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        if not player.current:
+            await interaction.response.send_message("❌ Nothing is currently playing.")
+            return
+
+        if await player.resume():
+            await self._send_to_channel(interaction.guild.id, interaction, content="▶ Resumed playback")
+        else:
+            await self._send_to_channel(interaction.guild.id, interaction, content="❌ Playback is not paused.")
+
+    @app_commands.command(name="music-stop", description="Stop playback and leave voice channel")
+    async def music_stop(self, interaction: Interaction):
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ You need Manage Channels permission.")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        was_playing = player.current is not None
+        await player.leave_voice_channel()
+        
+        if was_playing:
+            await interaction.response.send_message("⏹ Stopped playback and left voice channel")
+        else:
+            await interaction.response.send_message("👋 Left voice channel")
+
+    @app_commands.command(name="music-queue", description="Show the current music queue")
+    async def music_queue(self, interaction: Interaction):
+        await interaction.response.defer()
+        player = self.music_manager.get_player(interaction.guild.id)
+        display = player.get_queue_display(interaction.user)
+        
+        if len(display) > 2000:
+            display = display[:1997] + "..."
+        
+        await self._send_to_channel(interaction.guild.id, interaction, content=f"```{display}```")
+
+    @app_commands.command(name="music-nowplaying", description="Show the currently playing track")
+    async def music_nowplaying(self, interaction: Interaction):
+        player = self.music_manager.get_player(interaction.guild.id)
+        
+        if not player.current:
+            await interaction.response.send_message("❌ Nothing is currently playing.")
+            return
+
+        track = player.current
+        embed = Embed(
+            title="🎵 Now Playing",
+            description=f"**{track.title}**",
+            color=Colour.blurple(),
+        )
+        embed.add_field(name="Source", value=track.source.title(), inline=True)
+        embed.add_field(name="Duration", value=player._format_duration(track.duration), inline=True)
+        embed.add_field(name="Requested by", value=f"<@{track.requester_id}>", inline=True)
+        embed.add_field(name="Volume", value=f"{player.volume}%", inline=True)
+        embed.add_field(name="Loop", value=player.loop.value.title(), inline=True)
+        
+        if track.thumbnail:
+            embed.set_thumbnail(url=track.thumbnail)
+        
+        embed.set_footer(text=f"Queue: {player.queue_length} tracks remaining")
+        await self._send_to_channel(interaction.guild.id, interaction, embed=embed)
+
+    @app_commands.command(name="music-volume", description="Set the playback volume (0-100)")
+    @app_commands.describe(level="Volume level (0-100)")
+    async def music_volume(self, interaction: Interaction, level: int):
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ You need Manage Channels permission.")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        if not player.current:
+            await interaction.response.send_message("❌ Nothing is currently playing.")
+            return
+
+        await player.set_volume(level)
+        await self._send_to_channel(interaction.guild.id, interaction, content=f"🔊 Volume set to {level}%")
+
+    @app_commands.command(name="music-shuffle", description="Shuffle the queue")
+    async def music_shuffle(self, interaction: Interaction):
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ You need Manage Channels permission.")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        if player.queue_length < 2:
+            await interaction.response.send_message("❌ Need at least 2 tracks to shuffle.")
+            return
+
+        await player.shuffle()
+        await self._send_to_channel(interaction.guild.id, interaction, content=f"🔀 Shuffled {player.queue_length} tracks in queue")
+
+    @app_commands.command(name="music-loop", description="Toggle loop mode (off/track/queue)")
+    @app_commands.describe(mode="Loop mode: off, track, or queue")
+    async def music_loop(self, interaction: Interaction, mode: str):
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ You need Manage Channels permission.")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        mode = mode.lower()
+
+        if mode == "off":
+            player.loop = LoopMode.OFF
+            emoji = "❌"
+        elif mode == "track":
+            player.loop = LoopMode.TRACK
+            emoji = "🔂"
+        elif mode == "queue":
+            player.loop = LoopMode.QUEUE
+            emoji = "🔁"
+        else:
+            await interaction.response.send_message("❌ Invalid mode. Use: off, track, or queue")
+            return
+
+        await self._send_to_channel(interaction.guild.id, interaction, content=f"{emoji} Loop set to **{player.loop.value}**")
+
+    @app_commands.command(name="music-remove", description="Remove a track from the queue")
+    @app_commands.describe(position="Position in queue to remove (1-based)")
+    async def music_remove(self, interaction: Interaction, position: int):
+        if not interaction.user.guild_permissions.manage_channels:
+            await interaction.response.send_message("❌ You need Manage Channels permission.")
+            return
+
+        player = self.music_manager.get_player(interaction.guild.id)
+        if position < 1 or position > player.queue_length:
+            await interaction.response.send_message(
+                f"❌ Invalid position. Queue has {player.queue_length} tracks."
+            )
+            return
+
+        if await player.remove_from_queue(position):
+            await self._send_to_channel(interaction.guild.id, interaction, content=f"🗑 Removed track at position {position}")
+        else:
+            await self._send_to_channel(interaction.guild.id, interaction, content="❌ Failed to remove track.")
+
+
+async def setup(bot):
+    await bot.add_cog(Music(bot))

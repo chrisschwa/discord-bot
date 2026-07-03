@@ -1,0 +1,128 @@
+name: "Community Server"
+description: "A warm community server focused on discussion, events, and member engagement."
+
+categories:
+  - name: "📌|info"
+    channels:
+      - name: "📜|rules"
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+      - name: "📢|announcements"
+        type: announcement
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+      - name: "👋|welcome-and-farewells"
+        type: text
+      - name: "🪪|roles"
+        type: text
+
+  - name: "💬|community"
+    channels:
+      - name: "💬|general"
+        type: text
+      - name: "🎉|introductions"
+        type: text
+      - name: "🤔|questions"
+        type: text
+      - name: "🖼️|share-something"
+        type: text
+
+  - name: "🎨|creative"
+    channels:
+      - name: "🎨|art"
+        type: text
+      - name: "📸|photography"
+        type: text
+      - name: "✍️|writing"
+        type: text
+      - name: "🎵|music"
+        type: text
+
+  - name: "🗣️|voice-channels"
+    channels:
+      - name: "☕|Lounge"
+        type: voice
+      - name: "🎤|Karaoke"
+        type: voice
+      - name: "💤|AFK"
+        type: voice
+
+  - name: "🛡️|staff"
+    channels:
+      - name: "🔧|staff-chat"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Moderator":
+            view_channel: true
+            send_messages: true
+          "Admin":
+            view_channel: true
+            send_messages: true
+      - name: "📝|reports"
+        type: text
+      - name: "📊|logs"
+        type: text
+
+roles:
+  - name: "Admin"
+    color: 15158332
+    hoist: true
+    permissions:
+      administrator: true
+
+  - name: "Moderator"
+    color: 3447003
+    hoist: true
+    permissions:
+      kick_members: true
+      ban_members: true
+      manage_messages: true
+      mute_members: true
+
+  - name: "Regular"
+    color: 10070709
+    hoist: false
+
+  - name: "Artist"
+    color: 15105380
+    hoist: false
+    mentionable: true
+
+  - name: "Musician"
+    color: 10181845
+    hoist: false
+    mentionable: true
+
+  - name: "Writer"
+    color: 12745758
+    hoist: false
+    mentionable: true
+
+  - name: "Muted"
+    color: 5138073
+    hoist: false
+
+reaction_roles:
+  - channel: "🪪|roles"
+    message: "**Pick your interests!** React to get notified about relevant content."
+    reactions:
+      - emoji: "🎨"
+        role: "Artist"
+      - emoji: "🎵"
+        role: "Musician"
+      - emoji: "✍️"
+        role: "Writer"
+      - emoji: "⭐"
+        role: "Regular"
+
+welcome:
+  channel: "👋|welcome-and-farewells"
+  message: "Welcome **{user}** to **{server}**! 🎉 You're our {member_count}th member!\n\nMake sure to read <#{rules_channel}> and grab your roles in <#{roles_channel}>!"
+  dm: "Hi {user}! Welcome to **{server}**! We're thrilled to have you join our community. Don't be shy — introduce yourself and make some friends! 😊"

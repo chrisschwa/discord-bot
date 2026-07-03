@@ -1,0 +1,143 @@
+name: "Gaming Server"
+description: "A fully-featured gaming community server with roles, voice channels, and event areas."
+
+categories:
+  - name: "📌|information"
+    channels:
+      - name: "📜|rules"
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+            view_channel: true
+      - name: "📢|announcements"
+        type: announcement
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+      - name: "👋|welcome"
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+      - name: "📋|info"
+        type: text
+
+  - name: "💬|general"
+    channels:
+      - name: "💬|general"
+        type: text
+      - name: "🎉|off-topic"
+        type: text
+      - name: "🖼️|media"
+        type: text
+      - name: "🤖|bot-commands"
+        type: text
+
+  - name: "🎮|gaming"
+    channels:
+      - name: "🎯|game-search"
+        type: text
+      - name: "🏆|clips-highlights"
+        type: text
+      - name: "📊|setups"
+        type: text
+
+  - name: "🔊|voice-lounge"
+    channels:
+      - name: "🎵|Music"
+        type: voice
+      - name: "🎮|Gaming 1"
+        type: voice
+      - name: "🎮|Gaming 2"
+        type: voice
+      - name: "🔇|AFK"
+        type: voice
+
+  - name: "🎪|events"
+    channels:
+      - name: "📅|event-announcements"
+        type: text
+      - name: "🎯|event-lobby"
+        type: text
+      - name: "🏆|Tournament"
+        type: stage
+
+  - name: "🛡️|staff"
+    channels:
+      - name: "🔧|staff-chat"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Moderator":
+            view_channel: true
+            send_messages: true
+          "Admin":
+            view_channel: true
+            send_messages: true
+      - name: "📝|reports"
+        type: text
+      - name: "📊|logs"
+        type: text
+
+  - name: "🎫|tickets"
+    channels:
+      - name: "🎫|ticket-panel"
+        type: text
+
+roles:
+  - name: "Admin"
+    color: 15158332
+    hoist: true
+    permissions:
+      administrator: true
+
+  - name: "Moderator"
+    color: 3447003
+    hoist: true
+    permissions:
+      kick_members: true
+      ban_members: true
+      manage_messages: true
+      mute_members: true
+      manage_channels: true
+
+  - name: "VIP"
+    color: 15844367
+    hoist: true
+    mentionable: true
+
+  - name: "Gamer"
+    color: 5763713
+    hoist: false
+    mentionable: true
+
+  - name: "Streamer"
+    color: 14039440
+    hoist: false
+    mentionable: true
+
+  - name: "Muted"
+    color: 5138073
+    hoist: false
+    permissions: {}
+
+reaction_roles:
+  - channel: "📋|info"
+    message: "🎮 **Self-Assignable Roles**\nReact below to get your roles!"
+    reactions:
+      - emoji: "🎮"
+        role: "Gamer"
+      - emoji: "📺"
+        role: "Streamer"
+      - emoji: "⭐"
+        role: "VIP"
+
+welcome:
+  channel: "👋|welcome"
+  message: "╔══════════════════════════════╗\n  ║        Welcome, {user}!       ║\n  ║  You are member #{member_count}  ║\n  ║                            ║\n  ║ Check #📜|rules for rules!   ║\n  ║ Use #📋|info for self-roles  ║\n╚══════════════════════════════╝"
+  dm: "Hey {user}! Welcome to {server}! We're glad to have you here. Check out #📜|rules to get started!"

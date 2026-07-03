@@ -1,0 +1,52 @@
+name: "Minimal Server"
+description: "A clean, minimal server setup with essential channels and basic roles."
+
+categories:
+  - name: "text"
+    channels:
+      - name: "rules"
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+      - name: "general"
+        type: text
+      - name: "bot-commands"
+        type: text
+
+  - name: "voice"
+    channels:
+      - name: "General"
+        type: voice
+      - name: "AFK"
+        type: voice
+
+roles:
+  - name: "Admin"
+    color: 15158332
+    hoist: true
+    permissions:
+      administrator: true
+
+  - name: "Moderator"
+    color: 3447003
+    hoist: true
+    permissions:
+      kick_members: true
+      ban_members: true
+      manage_messages: true
+      mute_members: true
+
+  - name: "Member"
+    color: 10070709
+    hoist: false
+    mentionable: true
+
+  - name: "Muted"
+    color: 5138073
+    hoist: false
+
+welcome:
+  channel: "general"
+  message: "Welcome **{user}** to **{server}**! Check `#rules` to get started."

@@ -1,0 +1,15 @@
+[Unit]
+Description=Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/discord-bot
+Environment="PATH=/home/ubuntu/discord-bot/venv/bin"
+ExecStart=/home/ubuntu/discord-bot/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

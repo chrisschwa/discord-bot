@@ -1,0 +1,4 @@
+"""
+Discord Server Manager Bot Package
+"""
+__version__ = "1.0.0"

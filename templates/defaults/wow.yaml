@@ -1,0 +1,352 @@
+name: "Say Less Guild"
+description: |
+  ⚔️ – We Mutinied Against Micro-Management, Now We Want Cutting Edge.
+  📜 The Backstory:
+  Yes, we used to be in a "Cutting Edge" guild. We got entirely fed up with being micro-managed down to the exact pixel, treating a video game like a corporate board meeting.
+  So, we did what any rational group of gamers would do: we mutinied, jumped ship, and formed Say Less .
+  The philosophy is in the name. Less talking, less pixel-perfect micro-management, less spreadsheet nonsense more killing bosses and pulling big numbers.
+
+categories:
+  - name: "📌|information"
+    channels:
+      - name: "📜|rules"
+        description: |
+          Just 1 rule here don’t be a dick 😂 
+          Our HR department is a lone cactus in the middle of Tanaris, so take your complaints there. Also, do not message the GM—he’s already reached his daily limit for human interaction. In all seriousness, if you actually need help, contact an Officer. 🤷‍♂️
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+            view_channel: true
+      - name: "📢|announcements"
+        type: announcement
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+            view_channel: true
+      - name: "👋|welcome"
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+            view_channel: true
+      - name: "🎭|self-roles"
+        type: text
+        permissions:
+          "@everyone":
+            send_messages: false
+            read_messages: true
+            view_channel: true
+
+  - name: "⚔️|Say Less Raid Team"
+    channels:
+      - name: "📅|Raid Sign Up"
+        description: "Say Less raid sign up sheet"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Raid-Core":
+            view_channel: true
+            send_messages: true
+          "Raid-Alt":
+            view_channel: true
+            send_messages: true
+          "Trial":
+            view_channel: true
+            send_messages: false
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+          "Raid-Leader":
+            view_channel: true
+            send_messages: true
+      - name: "💬|Say Less Raid Announcements"
+        type: announcement
+        description: "All Announcements within the raid team"
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Raid-Core":
+            view_channel: true
+            send_messages: true
+          "Raid-Alt":
+            view_channel: true
+            send_messages: true
+          "Trial":
+            view_channel: true
+            send_messages: true
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+          "Raid-Leader":
+            view_channel: true
+            send_messages: true
+      - name: "🏆| Chat"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Raid-Core":
+            view_channel: true
+            send_messages: true
+          "Raid-Alt":
+            view_channel: true
+            send_messages: true
+          "Trial":
+            view_channel: true
+            send_messages: false
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+          "Raid-Leader":
+            view_channel: true
+            send_messages: true
+
+  - name: "🛡️|officer"
+    channels:
+      - name: "💬|officer-chat"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+      - name: "💬|officer-raid-chat"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+      - name: "💬|officer-voice"
+        type: voice
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+      - name: "💬|roster"
+        type: text
+        permissions:
+          "@everyone":
+            view_channel: false
+          "Officer":
+            view_channel: true
+            send_messages: true
+          "Guild-Master":
+            view_channel: true
+            send_messages: true
+
+  - name: "💬|social"
+    channels:
+      - name: "💬|General"
+        type: text
+      - name: "🎉|Off-topic"
+        type: text
+      - name: "🖼️|Media"
+        type: text
+      - name: "😂|Memes"
+        type: text
+
+  - name: "🔊|voice-lounge"
+    channels:
+      - name: "🎵|Music"
+        type: voice
+      - name: "💬|General"
+        type: voice
+      - name: "🎮|Mythic+ 1"
+        type: voice
+      - name: "🎮|Mythic+ 2"
+        type: voice
+
+roles:
+  # Leadership
+  - name: "Guild-Master"
+    color: 15158332
+    hoist: true
+    permissions:
+      administrator: true
+
+  - name: "Officer"
+    color: 15105570
+    hoist: true
+    permissions:
+      kick_members: true
+      ban_members: true
+      manage_messages: true
+      mute_members: true
+      manage_channels: true
+      manage_roles: true
+
+  - name: "Raid-Leader"
+    color: 10181046
+    hoist: true
+
+  # Raid tiers
+  - name: "Raid-Core"
+    color: 5763713
+    hoist: true
+    mentionable: true
+
+  - name: "Raid-Alt"
+    color: 15844367
+    hoist: true
+    mentionable: true
+
+  - name: "Trial"
+    color: 3447003
+    hoist: true
+    mentionable: true
+
+  # Class-Leader roles
+  - name: "Class-Leader"
+    color: 10181046
+    hoist: false
+    mentionable: true
+
+  # Role types (self-assigned)
+  - name: "Tank"
+    color: 5763713
+    hoist: false
+    mentionable: true
+
+  - name: "Healer"
+    color: 15158332
+    hoist: false
+    mentionable: true
+
+  - name: "DPS"
+    color: 15105570
+    hoist: false
+    mentionable: true
+
+  # WoW Class Roles (self-assigned)
+  - name: "Warrior"
+    color: 13015789
+    hoist: false
+
+  - name: "Paladin"
+    color: 16013658
+    hoist: false
+
+  - name: "Hunter"
+    color: 11200338
+    hoist: false
+
+  - name: "Rogue"
+    color: 16764040
+    hoist: false
+
+  - name: "Priest"
+    color: 16777215
+    hoist: false
+
+  - name: "Death-Knight"
+    color: 12836186
+    hoist: false
+
+  - name: "Demon Hunter"
+    color: 10701801
+    hoist: false
+
+  - name: "Shaman"
+    color: 46205
+    hoist: false
+
+  - name: "Warlock"
+    color: 8883326
+    hoist: false
+
+  - name: "Mage"
+    color: 4178507
+    hoist: false
+
+  - name: "Monk"
+    color: 65032
+    hoist: false
+
+  - name: "Druid"
+    color: 16742954
+    hoist: false
+
+  - name: "Evoker"
+    color: 3382015
+    hoist: false
+  # Utility
+  - name: "Muted"
+    color: 5138073
+    hoist: false
+
+voice:
+  trigger_channel: "💬|Create Voice Channel"
+
+reaction_roles:
+  # Class self-assignment panel
+  - channel: "🎭|self-roles"
+    message: "⚔️ **CLASS ROLES**\nReact with your main class!"
+    reactions:
+      - emoji: ":wowwarrior:"
+        role: "Warrior"
+      - emoji: ":wowpaladin:"
+        role: "Paladin"
+      - emoji: ":wowhunter:"
+        role: "Hunter"
+      - emoji: ":wowrogue:"
+        role: "Rogue"
+      - emoji: ":wowpriest:"
+        role: "Priest"
+      - emoji: ":wowdeathknight:"
+        role: "Death-Knight"
+      - emoji: ":wowshaman:"
+        role: "Shaman"
+      - emoji: ":wowwarlock:"
+        role: "Warlock"
+      - emoji: ":wowmage:"
+        role: "Mage"
+      - emoji: ":wowmonk:"
+        role: "Monk"
+      - emoji: ":wowdruid:"
+        role: "Druid"
+      - emoji: ":wowevoker:"
+        role: "Evoker"
+
+  # Role type panel
+  - channel: "🎭|self-roles"
+    message: "🛡️ **ROLE TYPE**\nReact with your primary role!\n\n🛡️ Tank | ❤️ Healer | ⚔️ DPS"
+    reactions:
+      - emoji: "🛡️"
+        role: "Tank"
+      - emoji: "❤️"
+        role: "Healer"
+      - emoji: "⚔️"
+        role: "DPS"
+
+welcome:
+  channel: "👋|welcome"
+  message: "╔══════════════════════════════════╗\n  ║     Welcome to the Guild, {user}!    ║\n  ║   You are member #{member_count}       ║\n  ║                                ║\n  ║ 📜 Check #📜-rules for rules       ║\n  ║ 🎭 Use #🎭-self-roles for class roles ║\n  ║ 💬 Chill in #💬-general              ║\n╚══════════════════════════════════╝"
+  dm: "Hey {user}! Welcome to {server}! We're a WoW raiding guild. Check #📜-rules and grab your class role in #🎭-self-roles. See you on the battlefield! ⚔️"
