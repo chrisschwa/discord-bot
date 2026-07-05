@@ -282,11 +282,21 @@ class Setup(commands.Cog):
         await progress.edit(content=f"✅ **Template Applied!**\nCategories: {categories_created} | Channels: {channels_created} | Roles: {roles_created} | Reaction Roles: {reaction_roles_created} | Voice Trigger: {voice_triggered}")
         logger.info(f"Template '{template['name']}' applied to guild {guild.id}: {categories_created} categories, {channels_created} channels, {roles_created} roles, {reaction_roles_created} reaction roles")
 
-    @app_commands.command(name="reaction-roles-recreate", description="Clear and recreate reaction roles from a template (only)")
-    @app_commands.describe(template="Template to get reaction roles from")
+    @app_commands.command(name="reaction-roles-recreate", description="Recreate reaction roles from a template, preserving user reactions")
+    @app_commands.describe(
+        template="Template to get reaction roles from",
+        force="Force recreate new messages (loses user reactions) instead of updating in place"
+    )
     @app_commands.choices(template=[app_commands.Choice(name=name, value=name) for name in ["wow", "gaming", "community", "minimal"]])
-    async def reaction_roles_recreate(self, interaction: Interaction, template: str):
-        """Clear all reaction roles and recreate them from the specified template."""
+    async def reaction_roles_recreate(self, interaction: Interaction, template: str, force: bool = False):
+        """Recreate reaction roles from the specified template.
+        
+        By default (force=false): Updates existing messages in-place, preserving user reactions.
+        Only adds missing reactions and removes broken ones. Roles stay on users.
+        
+        With force=true: Deletes ALL existing reaction roles and creates fresh messages.
+        User reactions are lost but roles remain assigned to users.
+        """
         await interaction.response.defer(ephemeral=True)
         if not interaction.user.guild_permissions.administrator:
             await interaction.followup.send("❌ You need the Administrator permission.", ephemeral=True)
@@ -296,14 +306,146 @@ class Setup(commands.Cog):
             available = ", ".join(self.loader.list_templates())
             await interaction.followup.send(f"❌ Template '{template}' not found.\nAvailable: {available}", ephemeral=True)
             return
-        # Step 1: Clear all existing reaction roles
-        existing = await self.bot.db.get_reaction_roles(interaction.guild.id)
+        
+        guild = interaction.guild
+        
+        if force:
+            # Force mode: clear everything and start fresh
+            existing = await self.bot.db.get_reaction_roles(guild.id)
+            for rr in existing:
+                await self.bot.db.delete_reaction_role(rr["id"])
+            created = await self._apply_reaction_roles(guild, template_data, interaction)
+            await interaction.followup.send(
+                f"⚠️ Force mode: Cleared **{len(existing)}** old reaction roles and created **{created}** new ones.\n"
+                f"User reactions are lost but assigned roles remain on users.",
+                ephemeral=True
+            )
+            return
+        
+        # Smart mode: Update existing messages in-place, preserving user reactions
+        # Build template mapping: (message_content, role_name) -> emoji_template_str
+        template_by_msg_role = {}
+        for rr_data in template_data.get("reaction_roles", []):
+            channel_name = self._parse_channel_name(rr_data["channel"])
+            message_content = rr_data.get("message", "")
+            for reaction_data in rr_data.get("reactions", []):
+                template_by_msg_role[(channel_name, message_content, reaction_data["role"])] = reaction_data["emoji"]
+        
+        # Collect existing DB entries
+        existing = await self.bot.db.get_reaction_roles(guild.id)
+        
+        # Group existing by message
+        existing_by_message = {}
         for rr in existing:
-            await self.bot.db.delete_reaction_role(rr["id"])
-        # Step 2: Re-create from template
-        created = await self._apply_reaction_roles(interaction.guild, template_data, interaction)
+            key = (rr["channel_id"], rr["message_id"])
+            existing_by_message.setdefault(key, []).append(rr)
+        
+        # Track what we need to add
+        template_entries_by_channel = {}
+        for rr_data in template_data.get("reaction_roles", []):
+            channel_name = self._parse_channel_name(rr_data["channel"])
+            message_content = rr_data.get("message", "")
+            template_entries_by_channel.setdefault((channel_name, message_content), []).append(rr_data)
+        
+        added = 0
+        fixed = 0
+        preserved = 0
+        users_with_roles = 0
+        
+        # Process existing messages - preserve user reactions
+        for msg_key, msg_entries in existing_by_message.items():
+            ch = guild.get_channel(msg_key[0])
+            if not ch:
+                continue
+            try:
+                msg = await ch.fetch_message(msg_key[1])
+            except Exception:
+                continue
+            
+            # Count users who have roles from this message
+            for reaction in msg.reactions:
+                emoji_str = str(reaction.emoji)
+                # Check if this emoji maps to a template entry
+                for entry in msg_entries:
+                    if entry["emoji"] == emoji_str:
+                        try:
+                            async for user in reaction.users():
+                                if not user.bot:
+                                    users_with_roles += 1
+                        except Exception:
+                            pass
+            
+            # Count preserved reactions (ones still in template)
+            existing_emoji_roles = {(rr["emoji"], rr["role_id"]): rr for rr in msg_entries}
+            for (chan_name, msg_content, role_name), emoji_str in template_by_msg_role.items():
+                if msg_content == msg.content:
+                    role = next((r for r in guild.roles if r.name == role_name), None)
+                    if not role:
+                        continue
+                    # Check if this reaction already exists
+                    for existing_emoji, existing_role_id in existing_emoji_roles:
+                        if existing_role_id == role.id:
+                            preserved += 1
+                            break
+        
+        # Now add missing reactions to existing messages
+        for (channel_name, message_content), reactions in template_entries_by_channel.items():
+            ch = next((c for c in guild.text_channels if c.name == channel_name), None)
+            if not ch:
+                logger.warning(f"Channel '{channel_name}' not found, skipping.")
+                continue
+            
+            # Find the existing message
+            msg = None
+            try:
+                async for m in ch.history(limit=50):
+                    if m.content == message_content:
+                        msg = m
+                        break
+            except Exception:
+                pass
+            
+            if not msg:
+                # Message doesn't exist, create it
+                try:
+                    msg = await ch.send(message_content)
+                except Exception as e:
+                    logger.error(f"Failed to send message in {channel_name}: {e}")
+                    continue
+            
+            # Check which reactions are missing
+            existing_rr = [rr for rr in existing if rr["channel_id"] == msg.channel.id and rr["message_id"] == msg.id]
+            existing_role_ids = {rr["role_id"] for rr in existing_rr}
+            
+            for reaction_data in reactions:
+                role = next((r for r in guild.roles if r.name == reaction_data["role"]), None)
+                if not role:
+                    logger.warning(f"Role '{reaction_data['role']}' not found, skipping.")
+                    continue
+                
+                if role.id in existing_role_ids:
+                    # Already exists, check if emoji is still valid
+                    continue
+                
+                # Missing reaction - add it
+                resolved = self._resolve_emoji(guild, reaction_data["emoji"])
+                try:
+                    await msg.add_reaction(resolved)
+                    emoji_stored = str(resolved)
+                    await self.bot.db.add_reaction_role(
+                        guild.id, msg.channel.id, msg.id, emoji_stored, role.id
+                    )
+                    added += 1
+                    logger.info(f"  Added missing reaction {emoji_stored} -> {reaction_data['role']} to existing message")
+                except Exception as e:
+                    logger.error(f"  Failed to add reaction {reaction_data['emoji']} for {reaction_data['role']}: {e}")
+        
         await interaction.followup.send(
-            f"✅ Cleared **{len(existing)}** old reaction roles and created **{created}** from template '{template}'.",
+            f"✅ Smart recreate complete:\n"
+            f"📋 **{preserved}** reactions preserved (user reactions kept)\n"
+            f"➕ **{added}** missing reactions added\n"
+            f"👥 **{users_with_roles}** users have roles from self-role messages\n"
+            f"Roles remain assigned even if reactions are lost.",
             ephemeral=True
         )
 

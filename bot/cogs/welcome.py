@@ -26,7 +26,7 @@ class Welcome(commands.Cog):
             if channel_id:
                 channel = guild.get_channel(channel_id)
                 if channel and isinstance(channel, TextChannel):
-                    msg = settings.get("welcome_message", "Welcome {user} to {server}!")
+                    msg = settings.get("welcome_message") or "Welcome {user} to {server}!"
                     msg = msg.replace("{user}", member.mention).replace("{server}", guild.name).replace("{member_count}", str(guild.member_count))
                     embed = Embed(description=msg, color=Colour.green())
                     embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
@@ -35,7 +35,7 @@ class Welcome(commands.Cog):
                     except Exception as e:
                         logger.error(f"Failed to send welcome message: {e}")
             # Welcome DM
-            dm_msg = settings.get("welcome_dm")
+            dm_msg = settings.get("welcome_dm") or ""
             if dm_msg:
                 dm_msg = dm_msg.replace("{user}", member.name).replace("{server}", guild.name)
                 try:
@@ -70,7 +70,7 @@ class Welcome(commands.Cog):
         channel = guild.get_channel(channel_id)
         if not channel or not isinstance(channel, TextChannel):
             return
-        msg = settings.get("leave_message", "{user} left {server}.")
+        msg = settings.get("leave_message") or "{user} left {server}."
         msg = msg.replace("{user}", member.display_name).replace("{server}", guild.name)
         embed = Embed(description=msg, color=Colour.red())
         embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)

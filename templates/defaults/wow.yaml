@@ -322,6 +322,8 @@ reaction_roles:
         role: "Priest"
       - emoji: ":wowdeathknight:"
         role: "Death-Knight"
+      - emoji: ":wowdemonhunter:"
+        role: "Demon Hunter"
       - emoji: ":wowshaman:"
         role: "Shaman"
       - emoji: ":wowwarlock:"

@@ -82,14 +82,26 @@ class ReactionRoles(commands.Cog):
         # Try exact match first
         role_data = await self.bot.db.get_reaction_role(guild_id, message_id, emoji)
         
-        # If not found, try case-insensitive / normalized matching
+        # If not found, try matching by emoji ID or normalized string
         if not role_data:
             all_roles = await self.bot.db.get_reaction_roles(guild_id)
+            # Extract emoji ID from reaction emoji for robust custom emoji matching
+            reaction_emoji_id = None
+            custom_match = re.match(r'<a?:([^\s:]+):(\d+)>', emoji)
+            if custom_match:
+                reaction_emoji_id = int(custom_match.group(2))
             for rr in all_roles:
                 if rr["message_id"] == message_id:
                     stored_emoji = rr["emoji"]
                     logger.info(f"  Comparing stored '{stored_emoji}' with reaction '{emoji}'")
-                    # Normalize both: strip <> for custom emojis, lowercase
+                    # Match by emoji ID (most robust for custom emojis)
+                    if reaction_emoji_id:
+                        stored_match = re.match(r'<a?:([^\s:]+):(\d+)>', stored_emoji)
+                        if stored_match and int(stored_match.group(2)) == reaction_emoji_id:
+                            role_data = rr
+                            logger.info(f"  -> Matched via emoji ID ({reaction_emoji_id})!")
+                            break
+                    # Fallback: normalize both strings
                     if stored_emoji.lower().strip('<>') == emoji.lower().strip('<>'):
                         role_data = rr
                         logger.info(f"  -> Matched via normalization!")
@@ -131,9 +143,21 @@ class ReactionRoles(commands.Cog):
         
         if not role_data:
             all_roles = await self.bot.db.get_reaction_roles(guild_id)
+            # Extract emoji ID from reaction emoji for robust custom emoji matching
+            reaction_emoji_id = None
+            custom_match = re.match(r'<a?:([^\s:]+):(\d+)>', emoji)
+            if custom_match:
+                reaction_emoji_id = int(custom_match.group(2))
             for rr in all_roles:
                 if rr["message_id"] == message_id:
                     stored_emoji = rr["emoji"]
+                    # Match by emoji ID (most robust for custom emojis)
+                    if reaction_emoji_id:
+                        stored_match = re.match(r'<a?:([^\s:]+):(\d+)>', stored_emoji)
+                        if stored_match and int(stored_match.group(2)) == reaction_emoji_id:
+                            role_data = rr
+                            logger.info(f"  -> Remove matched via emoji ID ({reaction_emoji_id})!")
+                            break
                     if stored_emoji.lower().strip('<>') == emoji.lower().strip('<>'):
                         role_data = rr
                         break
