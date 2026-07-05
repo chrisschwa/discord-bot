@@ -105,14 +105,18 @@ class Music(commands.Cog):
                     first = entries[0]
                     title = first.get("title", "Unknown Playlist")
                     duration = first.get("duration", 0) or 0
-                    url = first.get("url") or first.get("webpage_url", url)
+                    # Store webpage_url so ffmpeg can re-resolve it at playback time
+                    url = first.get("webpage_url") or first.get("url", url)
                 else:
                     title = info.get("title", "Unknown Playlist")
                     duration = 0
             else:
                 title = info.get("title", "Unknown Track")
                 duration = info.get("duration", 0) or 0
-                url = info.get("url") or info.get("webpage_url", url)
+                # Store webpage_url (original youtube URL) — NOT the signed videoplayback URL
+                # Signed URLs expire and cause 403 Forbidden when ffmpeg tries to play them later.
+                # FFmpeg can resolve youtube URLs natively at playback time.
+                url = info.get("webpage_url") or info.get("url", url)
 
             thumbnail = info.get("thumbnail", "")
             source = "youtube"
