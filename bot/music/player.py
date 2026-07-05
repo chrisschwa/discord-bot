@@ -166,32 +166,27 @@ class MusicPlayer:
             tmp.close()
 
             ydl_opts = {
-                "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+                "format": "bestaudio",
                 "quiet": True,
                 "no_warnings": True,
                 "default_search": "auto",
                 "extract_flat": False,
                 "socket_timeout": 30,
                 "outtmpl": tmp_path,
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "best",
-                }],
             }
+
+            import os
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(clean_url, download=True)
-                    # yt-dlp may change the output extension via postprocessor
-                    # Check for the actual downloaded file
-                    import os
-                    # yt-dlp with FFmpegExtractAudio keeps the original extension
-                    # but we need to find the file
+                    # yt-dlp adds the extension from the stream (e.g., .webm)
+                    # so the file at tmp_path.webm should exist
                     base = tmp_path
+                    # yt-dlp appends the extension, so tmp_path.webm is the actual file
                     if not os.path.exists(base):
-                        # Try common extensions
-                        for ext in [".m4a", ".webm", ".opus", ".aac", ".mp3"]:
-                            alt = base.rsplit(".", 1)[0] + ext
+                        for ext in [".webm", ".m4a", ".mka", ".opus", ".aac", ".mp3"]:
+                            alt = base + ext
                             if os.path.exists(alt):
                                 base = alt
                                 break
