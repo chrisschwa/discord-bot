@@ -150,47 +150,73 @@ class MusicPlayer:
         return new_parsed.geturl()
 
     async def _create_source(self, url: str) -> discord.AudioSource:
-        """Create FFmpeg audio source from URL (runs yt-dlp in threadpool)."""
-        def _resolve_and_create():
+        """Create FFmpeg audio source from URL.
+        
+        Downloads audio to a temp file using yt-dlp, then creates an FFmpegPCMAudio.
+        This avoids signed URL expiration (403 Forbidden) and FFmpeg not handling
+        YouTube URLs directly.
+        """
+        def _download_and_create():
             # Strip playlist params
             clean_url = self._strip_playlist_params(url)
 
+            # Create temp file for audio
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
+            tmp_path = tmp.name
+            tmp.close()
+
             ydl_opts = {
-                "format": "bestaudio/best",
+                "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
                 "quiet": True,
                 "no_warnings": True,
                 "default_search": "auto",
                 "extract_flat": False,
                 "socket_timeout": 30,
+                "outtmpl": tmp_path,
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "best",
+                }],
             }
 
-            # Resolve playlist URLs to a single video URL
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(clean_url, download=False)
-                if info is None:
-                    raise ValueError("yt-dlp returned no info — video may be private or unavailable")
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(clean_url, download=True)
+                    # yt-dlp may change the output extension via postprocessor
+                    # Check for the actual downloaded file
+                    import os
+                    # yt-dlp with FFmpegExtractAudio keeps the original extension
+                    # but we need to find the file
+                    base = tmp_path
+                    if not os.path.exists(base):
+                        # Try common extensions
+                        for ext in [".m4a", ".webm", ".opus", ".aac", ".mp3"]:
+                            alt = base.rsplit(".", 1)[0] + ext
+                            if os.path.exists(alt):
+                                base = alt
+                                break
 
-                if info.get("_type") == "playlist":
-                    entries = info.get("entries", [])
-                    if entries:
-                        first_entry = entries[0]
-                        clean_url = first_entry.get("webpage_url") or first_entry.get("url", clean_url)
-                    # else: empty playlist, fall through with original url
-
-            # Use use_ytdl=True so FFmpegPCMAudio internally resolves the YouTube URL
-            # to an actual stream URL at playback time. This avoids:
-            # 1. 403 Forbidden (signed URLs expire)
-            # 2. "Invalid data found" (FFmpeg can't play YouTube URLs directly)
-            ffmpeg_opts = {
-                "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-                "options": "-vn",
-            }
-            return discord.FFmpegPCMAudio(clean_url, **ffmpeg_opts, use_ytdl=True)
+                ffmpeg_opts = {
+                    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+                    "options": "-vn",
+                }
+                source = discord.FFmpegPCMAudio(base, **ffmpeg_opts)
+                # Store temp file path so we can clean it up later
+                source._tmp_file = base
+                return source
+            except Exception as e:
+                # Clean up temp file on error
+                import os
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise ValueError(f"yt-dlp failed to download audio: {e}")
 
         # Run in threadpool so yt-dlp doesn't block the event loop
         return await asyncio.wait_for(
-            asyncio.to_thread(_resolve_and_create),
-            timeout=60.0
+            asyncio.to_thread(_download_and_create),
+            timeout=120.0
         )
 
     async def _on_track_end(self, error: Optional[Exception], guild: discord.Guild):
