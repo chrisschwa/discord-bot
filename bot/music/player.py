@@ -48,6 +48,7 @@ class MusicPlayer:
     _task: Optional[asyncio.Task] = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _channel_id: Optional[int] = None
+    _loop: Optional[asyncio.AbstractEventLoop] = None
 
     @property
     def is_playing(self) -> bool:
@@ -122,10 +123,16 @@ class MusicPlayer:
             # Wrap in volume transformer
             source = discord.PCMVolumeTransformer(source)
             source.volume = self.volume / 100
-            
+
+            # Capture current event loop for the after callback
+            # (called from FFmpeg thread, so create_task won't work)
+            loop = asyncio.get_running_loop()
+
             self.voice_client.play(
                 source,
-                after=lambda e: asyncio.create_task(self._on_track_end(e, guild))
+                after=lambda e, _loop=loop, _guild=guild: _loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(self._on_track_end(e, _guild), loop=_loop)
+                )
             )
         except Exception as e:
             logger.error(f"Failed to play track '{track.title}': {e}")
