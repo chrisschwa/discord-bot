@@ -195,7 +195,6 @@ class MusicPlayer:
                 logger.info(f"Downloaded audio to {base} ({os.path.getsize(base)} bytes)")
 
                 ffmpeg_opts = {
-                    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
                     "options": "-vn",
                 }
                 source = discord.FFmpegPCMAudio(base, **ffmpeg_opts)
