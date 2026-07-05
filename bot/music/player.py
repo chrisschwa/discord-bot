@@ -157,56 +157,60 @@ class MusicPlayer:
         YouTube URLs directly.
         """
         def _download_and_create():
+            import os
+            import glob
+
             # Strip playlist params
             clean_url = self._strip_playlist_params(url)
 
-            # Create temp file for audio
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
-            tmp_path = tmp.name
-            tmp.close()
+            # Use a temp directory + basename, let yt-dlp handle the extension
+            tmp_dir = tempfile.mkdtemp()
+            tmp_path = os.path.join(tmp_dir, "audio")
 
             ydl_opts = {
                 "format": "bestaudio",
                 "quiet": True,
-                "no_warnings": True,
+                "no_warnings": False,
                 "default_search": "auto",
                 "extract_flat": False,
                 "socket_timeout": 30,
-                "outtmpl": tmp_path,
+                "outtmpl": tmp_path + ".%(ext)s",
             }
-
-            import os
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(clean_url, download=True)
-                    # yt-dlp adds the extension from the stream (e.g., .webm)
-                    # so the file at tmp_path.webm should exist
-                    base = tmp_path
-                    # yt-dlp appends the extension, so tmp_path.webm is the actual file
-                    if not os.path.exists(base):
-                        for ext in [".webm", ".m4a", ".mka", ".opus", ".aac", ".mp3"]:
-                            alt = base + ext
-                            if os.path.exists(alt):
-                                base = alt
-                                break
+
+                # Find the downloaded file
+                ext = info.get("ext", "webm")
+                base = tmp_path + "." + ext
+
+                if not os.path.exists(base) or os.path.getsize(base) < 100:
+                    # Try other extensions
+                    found = glob.glob(tmp_path + ".*")
+                    if found:
+                        base = found[0]
+                    else:
+                        raise ValueError(f"Download failed - no file found. Expected: {base}")
+
+                logger.info(f"Downloaded audio to {base} ({os.path.getsize(base)} bytes)")
 
                 ffmpeg_opts = {
                     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
                     "options": "-vn",
                 }
                 source = discord.FFmpegPCMAudio(base, **ffmpeg_opts)
-                # Store temp file path so we can clean it up later
-                source._tmp_file = base
+                # Store temp dir so we can clean it up later
+                source._tmp_dir = tmp_dir
                 return source
-            except Exception as e:
-                # Clean up temp file on error
-                import os
+            except Exception:
+                # Clean up temp dir on error
+                import shutil
                 try:
-                    os.unlink(tmp_path)
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
                 except OSError:
                     pass
-                raise ValueError(f"yt-dlp failed to download audio: {e}")
+                raise
 
         # Run in threadpool so yt-dlp doesn't block the event loop
         return await asyncio.wait_for(
