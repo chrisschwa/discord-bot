@@ -152,7 +152,7 @@ class MusicPlayer:
     async def _create_source(self, url: str) -> discord.AudioSource:
         """Create FFmpeg audio source from URL (runs yt-dlp in threadpool)."""
         def _resolve_and_create():
-            # Strip playlist params so ffmpeg gets a clean single-video URL
+            # Strip playlist params
             clean_url = self._strip_playlist_params(url)
 
             ydl_opts = {
@@ -164,7 +164,7 @@ class MusicPlayer:
                 "socket_timeout": 30,
             }
 
-            # Get info to resolve Spotify/playlist URLs to a playable video URL
+            # Resolve playlist URLs to a single video URL
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(clean_url, download=False)
                 if info is None:
@@ -174,18 +174,18 @@ class MusicPlayer:
                     entries = info.get("entries", [])
                     if entries:
                         first_entry = entries[0]
-                        real_url = first_entry.get("url") or first_entry.get("webpage_url", clean_url)
-                    else:
-                        real_url = clean_url
-                else:
-                    # For single videos, use the cleaned URL directly (ffmpeg can handle youtube URLs)
-                    real_url = clean_url
+                        clean_url = first_entry.get("webpage_url") or first_entry.get("url", clean_url)
+                    # else: empty playlist, fall through with original url
 
+            # Use use_ytdl=True so FFmpegPCMAudio internally resolves the YouTube URL
+            # to an actual stream URL at playback time. This avoids:
+            # 1. 403 Forbidden (signed URLs expire)
+            # 2. "Invalid data found" (FFmpeg can't play YouTube URLs directly)
             ffmpeg_opts = {
                 "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
                 "options": "-vn",
             }
-            return discord.FFmpegPCMAudio(real_url, **ffmpeg_opts)
+            return discord.FFmpegPCMAudio(clean_url, **ffmpeg_opts, use_ytdl=True)
 
         # Run in threadpool so yt-dlp doesn't block the event loop
         return await asyncio.wait_for(
