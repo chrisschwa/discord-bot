@@ -170,7 +170,8 @@ class MusicPlayer:
             ydl_opts = {
                 "format": "bestaudio",
                 "quiet": True,
-                "no_warnings": False,
+                "no_warnings": True,
+                "no_color": True,
                 "default_search": "auto",
                 "extract_flat": False,
                 "socket_timeout": 30,
