@@ -181,17 +181,16 @@ class MusicPlayer:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(clean_url, download=True)
 
-                # Find the downloaded file
-                ext = info.get("ext", "webm")
-                base = tmp_path + "." + ext
+                # Find the downloaded file - glob first, then try info ext
+                found = glob.glob(tmp_path + ".*")
+                if not found:
+                    raise ValueError(f"Download failed - no files in {tmp_dir}")
 
-                if not os.path.exists(base) or os.path.getsize(base) < 100:
-                    # Try other extensions
-                    found = glob.glob(tmp_path + ".*")
-                    if found:
-                        base = found[0]
-                    else:
-                        raise ValueError(f"Download failed - no file found. Expected: {base}")
+                # Pick the largest file (the actual download, not metadata)
+                base = max(found, key=lambda f: os.path.getsize(f))
+                size = os.path.getsize(base)
+                if size < 100:
+                    raise ValueError(f"Download failed - file too small ({size}B). Files: {found}")
 
                 logger.info(f"Downloaded audio to {base} ({os.path.getsize(base)} bytes)")
 
