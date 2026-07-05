@@ -113,8 +113,11 @@ class Music(commands.Cog):
             )
 
     async def _fetch_track_info(self, url: str) -> Track:
-        """Fetch track info from URL using yt-dlp (async wrapper)."""
-        return await asyncio.to_thread(self._fetch_track_info_sync, url)
+        """Fetch track info from URL using yt-dlp (async wrapper with timeout)."""
+        return await asyncio.wait_for(
+            asyncio.to_thread(self._fetch_track_info_sync, url),
+            timeout=60.0
+        )
 
     @app_commands.command(name="music-play", description="Play a song from YouTube/Spotify URL")
     @app_commands.describe(url="YouTube or Spotify URL to play")
@@ -135,6 +138,9 @@ class Music(commands.Cog):
 
         try:
             track = await self._fetch_track_info(url)
+            if track is None or not track.title or track.title == "Unknown Track":
+                raise ValueError("Could not resolve track from URL (video may be private, unlisted, or unavailable)")
+
             track.requester_id = interaction.user.id
             await player.add_to_queue(track)
 
@@ -157,6 +163,9 @@ class Music(commands.Cog):
             await self._send_to_channel(interaction.guild.id, interaction, embed=embed)
             logger.info(f"Added to queue: {track.title} by {interaction.user}")
 
+        except asyncio.TimeoutError:
+            logger.error(f"Track fetch timed out for '{url}'")
+            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds. The URL may be invalid or the service may be slow.")
         except Exception as e:
             logger.error(f"Failed to fetch track info for '{url}': {e}", exc_info=True)
             await interaction.followup.send(f"❌ Failed to fetch track: {e}")
