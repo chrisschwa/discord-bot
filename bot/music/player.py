@@ -8,6 +8,7 @@ import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
+from urllib.parse import urlparse, parse_qs, urlencode
 
 import discord
 from discord import VoiceClient, VoiceState
@@ -131,37 +132,59 @@ class MusicPlayer:
             self.current = None
             asyncio.create_task(self.play_next(guild))
 
+    def _strip_playlist_params(self, url: str) -> str:
+        """Strip playlist params (&list=, &index=) from URL to force single-video extraction."""
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        keep = {"v", "t", "feature", "hashtag", "sparams"}
+        filtered = {k: v for k, v in params.items() if k in keep}
+        new_query = urlencode(filtered, doseq=True)
+        new_parsed = parsed._replace(query=new_query)
+        return new_parsed.geturl()
+
     async def _create_source(self, url: str) -> discord.AudioSource:
-        """Create FFmpeg audio source from URL."""
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "quiet": True,
-            "no_warnings": True,
-            "default_search": "auto",
-            "extract_flat": False,
-            "socket_timeout": 30,
-        }
+        """Create FFmpeg audio source from URL (runs yt-dlp in threadpool)."""
+        def _resolve_and_create():
+            # Strip playlist params so ffmpeg gets a clean single-video URL
+            clean_url = self._strip_playlist_params(url)
 
-        # Get info first to handle Spotify URLs
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if info.get("_type") == "playlist":
-                # Take first track from playlist
-                entries = info.get("entries", [])
-                if entries:
-                    first_entry = entries[0]
-                    real_url = first_entry.get("url") or first_entry.get("webpage_url", url)
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "quiet": True,
+                "no_warnings": True,
+                "default_search": "auto",
+                "extract_flat": False,
+                "socket_timeout": 30,
+            }
+
+            # Get info to resolve Spotify/playlist URLs to a playable video URL
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(clean_url, download=False)
+                if info is None:
+                    raise ValueError("yt-dlp returned no info — video may be private or unavailable")
+
+                if info.get("_type") == "playlist":
+                    entries = info.get("entries", [])
+                    if entries:
+                        first_entry = entries[0]
+                        real_url = first_entry.get("url") or first_entry.get("webpage_url", clean_url)
+                    else:
+                        real_url = clean_url
                 else:
-                    real_url = url
-            else:
-                real_url = url
+                    # For single videos, use the cleaned URL directly (ffmpeg can handle youtube URLs)
+                    real_url = clean_url
 
-        # Create FFmpeg source
-        ffmpeg_opts = {
-            "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-            "options": "-vn",
-        }
-        return discord.FFmpegPCMAudio(real_url, **ffmpeg_opts)
+            ffmpeg_opts = {
+                "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+                "options": "-vn",
+            }
+            return discord.FFmpegPCMAudio(real_url, **ffmpeg_opts)
+
+        # Run in threadpool so yt-dlp doesn't block the event loop
+        return await asyncio.wait_for(
+            asyncio.to_thread(_resolve_and_create),
+            timeout=60.0
+        )
 
     async def _on_track_end(self, error: Optional[Exception], guild: discord.Guild):
         """Called when the current track finishes."""

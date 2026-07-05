@@ -65,9 +65,24 @@ class Music(commands.Cog):
         else:
             await interaction.followup.send(content=content, embed=embed)
 
+    def _strip_playlist_params(self, url: str) -> str:
+        """Strip playlist params (&list=, &index=, &v= after first) from URL."""
+        from urllib.parse import urlparse, parse_qs, urlencode
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        # Keep only v, t, feature, hashtag, sparams
+        keep = {"v", "t", "feature", "hashtag", "sparams"}
+        filtered = {k: v for k, v in params.items() if k in keep}
+        new_query = urlencode(filtered, doseq=True)
+        new_parsed = parsed._replace(query=new_query)
+        return new_parsed.geturl()
+
     def _fetch_track_info_sync(self, url: str) -> Track:
         """Fetch track info from URL using yt-dlp (runs in threadpool)."""
         import yt_dlp
+
+        # Strip playlist params so we get the single video info
+        url = self._strip_playlist_params(url)
 
         ydl_opts = {
             "quiet": True,
@@ -80,6 +95,9 @@ class Music(commands.Cog):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+
+            if info is None:
+                raise ValueError("yt-dlp returned no info for this URL")
 
             if info.get("_type") == "playlist":
                 entries = info.get("entries", [])
