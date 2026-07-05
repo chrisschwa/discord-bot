@@ -3,6 +3,7 @@ Music cog - Music playback commands for Discord voice channels.
 """
 import logging
 import asyncio
+import functools
 import discord
 from discord import (
     app_commands, Embed, Colour, Interaction, Member, VoiceChannel
@@ -64,8 +65,8 @@ class Music(commands.Cog):
         else:
             await interaction.followup.send(content=content, embed=embed)
 
-    async def _fetch_track_info(self, url: str) -> Track:
-        """Fetch track info from URL using yt-dlp."""
+    def _fetch_track_info_sync(self, url: str) -> Track:
+        """Fetch track info from URL using yt-dlp (runs in threadpool)."""
         import yt_dlp
 
         ydl_opts = {
@@ -79,7 +80,7 @@ class Music(commands.Cog):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            
+
             if info.get("_type") == "playlist":
                 entries = info.get("entries", [])
                 if entries:
@@ -110,6 +111,10 @@ class Music(commands.Cog):
                 thumbnail=thumbnail,
                 source=source,
             )
+
+    async def _fetch_track_info(self, url: str) -> Track:
+        """Fetch track info from URL using yt-dlp (async wrapper)."""
+        return await asyncio.to_thread(self._fetch_track_info_sync, url)
 
     @app_commands.command(name="music-play", description="Play a song from YouTube/Spotify URL")
     @app_commands.describe(url="YouTube or Spotify URL to play")
