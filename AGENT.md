@@ -22,11 +22,11 @@
    ```
    git add .
    git commit -m "description of changes"
-   git push origin <branch>
+   git push origin main
    ```
 2. **SSH to server** and pull changes:
    ```
-   ssh ubuntu@gs.schwaller.cloud "cd /home/ubuntu/discord-bot && git pull origin <branch>"
+   ssh ubuntu@gs.schwaller.cloud "cd /home/ubuntu/discord-bot && git pull origin main"
    ```
 3. **Restart the service**:
    ```
