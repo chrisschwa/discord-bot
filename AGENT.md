@@ -28,9 +28,11 @@
    ```
    ssh ubuntu@gs.schwaller.cloud "cd /home/ubuntu/discord-bot && git pull origin main"
    ```
-3. **Restart the service**:
+3. **Restart the service** only if explicitly asked:
    ```
    ssh ubuntu@gs.schwaller.cloud "sudo systemctl restart discord-bot.service"
    ```
+
+**IMPORTANT:** Always push changes to the server via git pull. **Never restart the bot unless explicitly asked** by the user (e.g., music may be playing).
 
 **Do NOT use `scp` to deploy individual files.** Always use git to keep the server in sync with the repository.
