@@ -183,17 +183,13 @@ class Music(commands.Cog):
 
         player = self.music_manager.get_player(interaction.guild.id)
 
-        # Check if music channel is configured - if so, skip defer entirely
-        # to avoid orphaned "thinking..." indicator when followup goes elsewhere
-        music_channel = await self._get_music_channel(interaction.guild.id)
-        if music_channel is None:
-            # Responding in command channel - defer is safe (thinking clears on followup)
-            await interaction.response.defer()
+        # Always defer immediately to avoid Discord timeout (5s limit)
+        await interaction.response.defer(ephemeral=True)
 
         if not player.voice_client or not player.voice_client.is_connected():
             joined = await player.join_voice_channel(interaction.guild, channel)
             if not joined:
-                await interaction.followup.send("❌ Failed to join voice channel.")
+                await interaction.followup.send("❌ Failed to join voice channel.", ephemeral=True)
                 return
 
         try:
@@ -216,7 +212,7 @@ class Music(commands.Cog):
             if track.thumbnail:
                 embed.set_thumbnail(url=track.thumbnail)
             embed.add_field(name="Duration", value=player._format_duration(track.duration), inline=True)
-            embed.add_field(name="Position", value=f"#{player.queue_length}", inline=True)
+            embed.add_field(name="Position", value=f"#{player.queue_length + (1 if player.current else 0)}", inline=True)
             embed.add_field(name="Requested by", value=interaction.user.mention, inline=True)
             if player.current:
                 embed.set_footer(text=f"Currently playing: {player.current.title}")
@@ -226,10 +222,10 @@ class Music(commands.Cog):
 
         except asyncio.TimeoutError:
             logger.error(f"Track fetch timed out for '{query}'")
-            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds.")
+            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds.", ephemeral=True)
         except Exception as e:
             logger.error(f"Failed to fetch track info for '{query}': {e}", exc_info=True)
-            await interaction.followup.send(f"❌ Failed to fetch track: {e}")
+            await interaction.followup.send(f"❌ Failed to fetch track: {e}", ephemeral=True)
 
     @app_commands.command(name="music-channel", description="Set the music response channel (Admin only)")
     @app_commands.describe(channel="Channel to send music responses to (defaults to current)")
