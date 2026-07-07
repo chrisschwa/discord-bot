@@ -182,7 +182,8 @@ class Music(commands.Cog):
             return
 
         player = self.music_manager.get_player(interaction.guild.id)
-        await interaction.response.defer()
+        # Defer ephemeral so "thinking..." disappears after response
+        await interaction.response.defer(ephemeral=True)
 
         if not player.voice_client or not player.voice_client.is_connected():
             joined = await player.join_voice_channel(interaction.guild, channel)
