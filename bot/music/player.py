@@ -176,6 +176,12 @@ class MusicPlayer:
                 "extract_flat": False,
                 "socket_timeout": 30,
                 "outtmpl": tmp_path + ".%(ext)s",
+                # Anti-403 measures: use portable extractor config + cookies workaround
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["ios", "android"],
+                    }
+                },
             }
 
             try:

@@ -77,12 +77,20 @@ class Music(commands.Cog):
         new_parsed = parsed._replace(query=new_query)
         return new_parsed.geturl()
 
-    def _fetch_track_info_sync(self, url: str) -> Track:
-        """Fetch track info from URL using yt-dlp (runs in threadpool)."""
+    def _is_url_like(self, text: str) -> bool:
+        """Check if the input looks like a URL rather than a search query."""
+        return text.startswith(("http://", "https://", "yt search:", "ytsearch:"))
+
+    def _fetch_track_info_sync(self, query: str) -> Track:
+        """Fetch track info from URL or search query using yt-dlp (runs in threadpool)."""
         import yt_dlp
 
-        # Strip playlist params so we get the single video info
-        url = self._strip_playlist_params(url)
+        # Detect if input is a URL or a search query
+        is_url = self._is_url_like(query)
+
+        if is_url:
+            # Strip playlist params so we get the single video info
+            query = self._strip_playlist_params(query)
 
         ydl_opts = {
             "quiet": True,
@@ -94,10 +102,10 @@ class Music(commands.Cog):
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(query, download=False)
 
             if info is None:
-                raise ValueError("yt-dlp returned no info for this URL")
+                raise ValueError("yt-dlp returned no info for this query")
 
             if info.get("_type") == "playlist":
                 entries = info.get("entries", [])
@@ -106,44 +114,68 @@ class Music(commands.Cog):
                     title = first.get("title", "Unknown Playlist")
                     duration = first.get("duration", 0) or 0
                     # Store webpage_url so ffmpeg can re-resolve it at playback time
-                    url = first.get("webpage_url") or first.get("url", url)
+                    resolved_url = first.get("webpage_url") or first.get("url", query)
                 else:
                     title = info.get("title", "Unknown Playlist")
                     duration = 0
+                    resolved_url = query
             else:
                 title = info.get("title", "Unknown Track")
                 duration = info.get("duration", 0) or 0
                 # Store webpage_url (original youtube URL) — NOT the signed videoplayback URL
                 # Signed URLs expire and cause 403 Forbidden when ffmpeg tries to play them later.
                 # FFmpeg can resolve youtube URLs natively at playback time.
-                url = info.get("webpage_url") or info.get("url", url)
+                resolved_url = info.get("webpage_url") or info.get("url", query)
 
             thumbnail = info.get("thumbnail", "")
-            source = "youtube"
-            if "spotify" in url:
-                source = "spotify"
-            elif "soundcloud" in url:
-                source = "soundcloud"
+            source = info.get("extractor_key", "youtube").lower().replace("ie", "")
 
             return Track(
                 title=title,
-                url=url,
+                url=resolved_url,
                 duration=int(duration),
                 requester_id=0,
                 thumbnail=thumbnail,
                 source=source,
             )
 
-    async def _fetch_track_info(self, url: str) -> Track:
-        """Fetch track info from URL using yt-dlp (async wrapper with timeout)."""
+    async def _fetch_track_info(self, query: str) -> Track:
+        """Fetch track info from URL or search query using yt-dlp (async wrapper with timeout)."""
         return await asyncio.wait_for(
-            asyncio.to_thread(self._fetch_track_info_sync, url),
+            asyncio.to_thread(self._fetch_track_info_sync, query),
             timeout=60.0
         )
 
-    @app_commands.command(name="music-play", description="Play a song from YouTube/Spotify URL")
-    @app_commands.describe(url="YouTube or Spotify URL to play")
-    async def music_play(self, interaction: Interaction, url: str):
+    async def _search_youtube(self, query: str) -> list:
+        """Search YouTube for a query and return a list of results."""
+        import yt_dlp
+
+        search_query = f"ytsearch:{query}"
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": False,
+            "socket_timeout": 30,
+        }
+
+        results = []
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+            if info and info.get("_type") == "playlist":
+                for entry in info.get("entries", [])[:10]:
+                    if entry and entry.get("title"):
+                        results.append({
+                            "title": entry.get("title", "Unknown"),
+                            "url": entry.get("webpage_url") or entry.get("url", ""),
+                            "duration": entry.get("duration", 0) or 0,
+                            "thumbnail": entry.get("thumbnail", ""),
+                        })
+        return results
+
+    @app_commands.command(name="music-play", description="Play a song by URL or search title")
+    @app_commands.describe(query="YouTube/Spotify URL or song title to search")
+    async def music_play(self, interaction: Interaction, query: str):
         channel, error = self._check_voice_channel(interaction)
         if error:
             await interaction.response.send_message(f"❌ {error}")
@@ -159,9 +191,9 @@ class Music(commands.Cog):
                 return
 
         try:
-            track = await self._fetch_track_info(url)
+            track = await self._fetch_track_info(query)
             if track is None or not track.title or track.title == "Unknown Track":
-                raise ValueError("Could not resolve track from URL (video may be private, unlisted, or unavailable)")
+                raise ValueError("Could not resolve track from query (video may be private, unlisted, or unavailable)")
 
             track.requester_id = interaction.user.id
             await player.add_to_queue(track)
@@ -169,8 +201,9 @@ class Music(commands.Cog):
             if not player.current and not player._task:
                 asyncio.create_task(player.play_next(interaction.guild))
 
+            search_note = " (search)" if not self._is_url_like(query) else ""
             embed = Embed(
-                title="🎵 Added to Queue",
+                title=f"🎵 Added to Queue{search_note}",
                 description=f"**{track.title}**",
                 color=Colour.green(),
             )
@@ -186,10 +219,10 @@ class Music(commands.Cog):
             logger.info(f"Added to queue: {track.title} by {interaction.user}")
 
         except asyncio.TimeoutError:
-            logger.error(f"Track fetch timed out for '{url}'")
-            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds. The URL may be invalid or the service may be slow.")
+            logger.error(f"Track fetch timed out for '{query}'")
+            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds. The URL/query may be invalid or the service may be slow.")
         except Exception as e:
-            logger.error(f"Failed to fetch track info for '{url}': {e}", exc_info=True)
+            logger.error(f"Failed to fetch track info for '{query}': {e}", exc_info=True)
             await interaction.followup.send(f"❌ Failed to fetch track: {e}")
 
     @app_commands.command(name="music-channel", description="Set the music response channel (Admin only)")
