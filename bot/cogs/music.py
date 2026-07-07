@@ -183,21 +183,15 @@ class Music(commands.Cog):
 
         player = self.music_manager.get_player(interaction.guild.id)
 
-        # Check if music channel is configured
-        music_channel = await self._get_music_channel(interaction.guild.id)
+        # ALWAYS defer within 5s to satisfy Discord's interaction timeout
+        await interaction.response.defer()
 
-        # Only defer when responding in command channel (followup clears thinking)
-        # When music channel is configured, don't defer - send directly to music channel
-        if music_channel is None:
-            await interaction.response.defer()
+        music_channel = await self._get_music_channel(interaction.guild.id)
 
         if not player.voice_client or not player.voice_client.is_connected():
             joined = await player.join_voice_channel(interaction.guild, channel)
             if not joined:
-                if music_channel:
-                    await music_channel.send("❌ Failed to join voice channel.")
-                else:
-                    await interaction.followup.send("❌ Failed to join voice channel.")
+                await self._send_to_channel(interaction.guild.id, interaction, content="❌ Failed to join voice channel.")
                 return
 
         try:
@@ -225,23 +219,22 @@ class Music(commands.Cog):
             if player.current:
                 embed.set_footer(text=f"Currently playing: {player.current.title}")
 
-            await self._send_to_channel(interaction.guild.id, interaction, embed=embed)
+            # Send to music channel if configured, and always send followup to clear thinking
+            if music_channel:
+                try:
+                    await music_channel.send(embed=embed)
+                except Exception:
+                    pass
+            # followup.send clears the "thinking..." indicator
+            await interaction.followup.send(embed=embed)
             logger.info(f"Added to queue: {track.title} by {interaction.user}")
 
         except asyncio.TimeoutError:
             logger.error(f"Track fetch timed out for '{query}'")
-            error_msg = "⏱ Track fetching timed out after 60 seconds."
-            if music_channel:
-                await music_channel.send(error_msg)
-            else:
-                await interaction.followup.send(error_msg)
+            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds.")
         except Exception as e:
             logger.error(f"Failed to fetch track info for '{query}': {e}", exc_info=True)
-            error_msg = f"❌ Failed to fetch track: {e}"
-            if music_channel:
-                await music_channel.send(error_msg)
-            else:
-                await interaction.followup.send(error_msg)
+            await interaction.followup.send(f"❌ Failed to fetch track: {e}")
 
     @app_commands.command(name="music-channel", description="Set the music response channel (Admin only)")
     @app_commands.describe(channel="Channel to send music responses to (defaults to current)")
