@@ -183,13 +183,21 @@ class Music(commands.Cog):
 
         player = self.music_manager.get_player(interaction.guild.id)
 
-        # Always defer immediately to avoid Discord timeout (5s limit)
-        await interaction.response.defer(ephemeral=True)
+        # Check if music channel is configured
+        music_channel = await self._get_music_channel(interaction.guild.id)
+
+        # Only defer when responding in command channel (followup clears thinking)
+        # When music channel is configured, don't defer - send directly to music channel
+        if music_channel is None:
+            await interaction.response.defer()
 
         if not player.voice_client or not player.voice_client.is_connected():
             joined = await player.join_voice_channel(interaction.guild, channel)
             if not joined:
-                await interaction.followup.send("❌ Failed to join voice channel.", ephemeral=True)
+                if music_channel:
+                    await music_channel.send("❌ Failed to join voice channel.")
+                else:
+                    await interaction.followup.send("❌ Failed to join voice channel.")
                 return
 
         try:
@@ -222,10 +230,18 @@ class Music(commands.Cog):
 
         except asyncio.TimeoutError:
             logger.error(f"Track fetch timed out for '{query}'")
-            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds.", ephemeral=True)
+            error_msg = "⏱ Track fetching timed out after 60 seconds."
+            if music_channel:
+                await music_channel.send(error_msg)
+            else:
+                await interaction.followup.send(error_msg)
         except Exception as e:
             logger.error(f"Failed to fetch track info for '{query}': {e}", exc_info=True)
-            await interaction.followup.send(f"❌ Failed to fetch track: {e}", ephemeral=True)
+            error_msg = f"❌ Failed to fetch track: {e}"
+            if music_channel:
+                await music_channel.send(error_msg)
+            else:
+                await interaction.followup.send(error_msg)
 
     @app_commands.command(name="music-channel", description="Set the music response channel (Admin only)")
     @app_commands.describe(channel="Channel to send music responses to (defaults to current)")
