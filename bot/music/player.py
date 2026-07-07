@@ -168,7 +168,7 @@ class MusicPlayer:
             tmp_path = os.path.join(tmp_dir, "audio")
 
             ydl_opts = {
-                "format": "bestaudio",
+                "format": "bestaudio[ext=m4a]/bestaudio/best",
                 "quiet": True,
                 "no_warnings": True,
                 "no_color": True,
@@ -176,7 +176,12 @@ class MusicPlayer:
                 "extract_flat": False,
                 "socket_timeout": 30,
                 "outtmpl": tmp_path + ".%(ext)s",
-                # Anti-403 measures: use portable extractor config + cookies workaround
+                # Anti-403: iOS/Android clients + postprocessor to convert to m4a
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }],
                 "extractor_args": {
                     "youtube": {
                         "player_client": ["ios", "android"],
