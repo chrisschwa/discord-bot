@@ -182,8 +182,13 @@ class Music(commands.Cog):
             return
 
         player = self.music_manager.get_player(interaction.guild.id)
-        # Defer ephemeral so "thinking..." disappears after response
-        await interaction.response.defer(ephemeral=True)
+
+        # Check if music channel is configured - if so, skip defer entirely
+        # to avoid orphaned "thinking..." indicator when followup goes elsewhere
+        music_channel = await self._get_music_channel(interaction.guild.id)
+        if music_channel is None:
+            # Responding in command channel - defer is safe (thinking clears on followup)
+            await interaction.response.defer()
 
         if not player.voice_client or not player.voice_client.is_connected():
             joined = await player.join_voice_channel(interaction.guild, channel)
@@ -221,7 +226,7 @@ class Music(commands.Cog):
 
         except asyncio.TimeoutError:
             logger.error(f"Track fetch timed out for '{query}'")
-            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds. The URL/query may be invalid or the service may be slow.")
+            await interaction.followup.send("⏱ Track fetching timed out after 60 seconds.")
         except Exception as e:
             logger.error(f"Failed to fetch track info for '{query}': {e}", exc_info=True)
             await interaction.followup.send(f"❌ Failed to fetch track: {e}")

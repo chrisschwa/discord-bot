@@ -236,15 +236,13 @@ class MusicPlayer:
         await self.play_next(guild)
 
     async def _auto_leave(self, guild: discord.Guild):
-        """Auto-leave voice channel when queue is empty."""
-        await asyncio.sleep(30)  # Wait 30 seconds
-        if not self.queue and not self.current:
-            # Check if still connected and alone
+        """Auto-leave voice channel when queue is empty and nothing playing."""
+        await asyncio.sleep(15)  # Wait 15 seconds
+        # Leave if still idle (no current track, empty queue) - regardless of other users
+        if not self.current and not self.queue:
             if self.voice_client and self.voice_client.is_connected():
-                channel = self.voice_client.channel
-                if channel and len(channel.members) == 1:
-                    await self.leave_voice_channel()
-                    logger.info(f"Left empty voice channel in {guild.name}")
+                await self.leave_voice_channel()
+                logger.info(f"Auto-left voice channel in {guild.name} (idle)")
 
     async def pause(self) -> bool:
         """Pause playback."""
